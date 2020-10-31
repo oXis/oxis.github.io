@@ -87,7 +87,7 @@ E_kbz3s_b5rg6n = "2vhaghsghf2vhaghsghfw2vhaghsghfi2vhaghsghfnm2vhaghsghf2vhaghsg
 Some elements inside `UserForm1` are useless, and some are used to retrieve parts of obfuscated strings, in order to rebuild then inside the code.
 
 ### Result
-I am going to pass on describing to long and annoying process of de-obfuscating the code.
+I am going to pass on describing the long and annoying process of de-obfuscating the code.
 
 ```vb
 Function Entry()
