@@ -1,4 +1,4 @@
- ---
+---
 title:  "Anatomy of an Emotet Word Document dropper"
 layout: post
 ---
@@ -13,18 +13,18 @@ Sample hash is `a9fe73484674696be756808e93f839be7157cd65995d8de9e67e40bf77c9b229
 
 [Link](https://www.virustotal.com/gui/file/a9fe73484674696be756808e93f839be7157cd65995d8de9e67e40bf77c9b229/detection) to Virus Total
 
-![VTDetection](../assets/pics/2020-10-31/VT_detection.png "VT detection")
+![VTDetection](/assets/pics/2020-10-31/VT_detection.png "VT detection")
 
 ## First step
 Instead of using tools like `oledump` or `olevba`, I went straight into analysing the doc inside a Windows 10 virtual machine and Microsoft Office Pro 2016.
 
 Once opened the documents states that it was created with an old version of Office and that because of that macros should be activated ¯\\_(ツ)_/¯
 
-![Open](../assets/pics/2020-10-31/doc_preview.png "Preview")
+![Open](/assets/pics/2020-10-31/doc_preview.png "Preview")
 
 Upon inspecting macros in VBA Dev tab, we can see that it's heavily obfuscated.
 
-![Obf](../assets/pics/2020-10-31/code_obfuscated.png "Obfuscation")
+![Obf](/assets/pics/2020-10-31/code_obfuscated.png "Obfuscation")
 
 Note the presence of `Document_Open` function. The macro is executed as soon as you click Allow Content. Once executed, you only see a Powershell window popping up for a fraction of a second.
 
@@ -82,7 +82,7 @@ E_kbz3s_b5rg6n = "2vhaghsghf2vhaghsghfw2vhaghsghfi2vhaghsghfnm2vhaghsghf2vhaghsg
 
 `Ykd6l9_zi2__37zjve` reference the Form, and `O2a2ey1hmvf` reference the `ComboBox` inside the form. The box is set to letter `P`.
 
-![cbox](./../assets/pics/2020-10-31/hidden_P.png "Hidden P")
+![cbox](/assets/pics/2020-10-31/hidden_P.png "Hidden P")
 
 Some elements inside `UserForm1` are useless, and some are used to retrieve parts of obfuscated strings, in order to rebuild then inside the code.
 
@@ -140,7 +140,7 @@ ret = Split(tmpsplit, "2vhaghsghf")
 ```
 
 The final `powershell` payload is hidden inside the pictures presented to the user when opening the document, and is de-obfuscated by splitting the string with `2vhaghsghf`
-![Payload](../assets/pics/2020-10-31/hidden_payload_AltText.png "Powershell Payload")
+![Payload](/assets/pics/2020-10-31/hidden_payload_AltText.png "Powershell Payload")
 
 
 The final macro payload can be reduced to the following snippet.
