@@ -31,7 +31,7 @@ The f-secure blog post breaks down the steps taken by the shellcode.
 > 15. The DLLs memory is freed.
 > 16. The shellcode then zeros out itself, except for the very end of the function, which allows the APC call to return gracefully.
 
-Furthermore, I wanted to add a bit a compression, and XOR obfuscation.
+Furthermore, I wanted to add a bit of compression, and XOR obfuscation.
 
 The code can be found on Github - [https://github.com/oXis/DoublePulsarPayload](https://github.com/oXis/DoublePulsarPayload).
 The code was developed on Visual Studio 2019 Community on Windows 7 x64, and tested on Windows 10.
