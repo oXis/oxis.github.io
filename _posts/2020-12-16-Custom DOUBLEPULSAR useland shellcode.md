@@ -92,7 +92,7 @@ The project is organised in 5 parts.
 
 ## DoublePulsarShellcode
 
-The entry point of the shellcode is the `GetDll` function. Something is weird with `function_order.txt`, it seems like the compiler is not following the order presents in the text file. But having functions in that order generates a good `map.txt` file with `GetDll` at the beginning of the `.text` section.
+The entry point of the shellcode is the `GetDll` function. Something is weird with `function_order.txt`, it seems like the compiler is not following the order present in the text file. But having functions in that order generates a good `map.txt` file with `GetDll` at the beginning of the `.text` section.
 
 ```text
 0001:00000000       ?GetDLL@@YAHXZ             0000000140001000 f   DoublePulsarShellcode.obj
@@ -113,12 +113,12 @@ We will talk more about function order in the next section. Let's go back the to
 
 ![Obfuscated shellcode](/assets/pics/2020-12-16/x64dbg_obf.png)
 
-`SHELLCODE_XOR_OFFSET` is equal to 70 bytes, which means that only the first 70 bytes of the shellcode is actual code. T
+`SHELLCODE_XOR_OFFSET` is equal to 70 bytes, which means that only the first 70 bytes of the shellcode is actual code.
 ```c++
 #define SHELLCODE_XOR_OFFSET 70 // from start of the shellcode to SHELLCODE_XOR_OFFSET
 ```
 
-The XOR key is only 1 byte, so there is only 255 possible keys. This is no perfect and could be improved, but for now it is sufficient to prevent detection by AVs.
+The XOR key is only 1 byte, so there is only 255 possible keys. This is not perfect and could be improved, but for now it is sufficient to prevent detection by AVs.
 
 The first 70 bytes are actually the `GetDLL` function prologue plus the snippet below.
 
@@ -132,7 +132,7 @@ while (*((byte*)start) != ('M' ^ KEY_DLL) || *((byte*)start+1) != ('Z' ^ KEY_DLL
 }
 ```
 
-When the `flag` is reached, in that case the flag is equal to `MZ` but it could be anything, the XOR routine exists and some important data can be accessed.
+When the `flag` is reached, in that case the flag is equal to `MZ` but it could be anything, the XOR routine exists (`while` loop) and some important data can be accessed.
 
 - `sizeShellcode` is the total size of the shellcode
 - `ordToCall` represents the function to call if the payload is a DLL
@@ -142,12 +142,12 @@ When the `flag` is reached, in that case the flag is equal to `MZ` but it could 
 The shellcode then proceeds to XOR decrypt `compressedSizeDllFile` bytes and loads `VirtualAlloc` Windows API function.
 
 **GetModuleBaseAddress and GetExportAddress**  
-Windows API functions are resolved using two functions. `GetModuleBaseAddress` is used to resoled the base address of `kernel32` using a hash value (see `Helper.cpp`). The function reads the Process Environnement Bloc `PEB` and list loaded modules until `kernel32` is found.   
+Windows API functions are resolved using two functions. `GetModuleBaseAddress` is used to resolve the base address of `kernel32` using a hash value (see `Helper.cpp`). The function reads the Process Environnement Bloc `PEB` and list loaded modules until `kernel32` is found.   
 `GetExportAddress` acts like the "real" Windows API `GetProcAddress`, it resolves the address of the function inside the provided module that corresponds to the hash value given in argument. This implementation supports forwarded functions.
 
 `VirtualAlloc` is used to allocate `sizeDllFile` bytes. The allocated space will receive the decompressed payload. `lzo1z_decompress` is called to decompress the payload, after that, the memory region holding the compressed payload is zeroed out using `memset` (`mmemset` is just a custom *inline* implementation of `memset`).
 
-Finally, `shellcode` function is called, the first argument points to the uncompressed payload. The last two lines of `GetDLL` are wiping the memory clean until `SHELLCODE_WIPE_OFFSET`. At the end, only 50 bytes remains.
+Finally, `shellcode` function is called, the first argument points to the uncompressed payload. The last two lines of `GetDLL` are wiping the memory clean until `SHELLCODE_WIPE_OFFSET`. At the end, only 50 bytes remain.
 
 ```c++
 int GetDLL()
@@ -237,7 +237,7 @@ mmemcpy(imageBase, module, dosHeader->e_lfanew + NTheader->OptionalHeader.SizeOf
 NTheader = GetNTHeaders((HMODULE)imageBase);
 ```
 
-The next step is to copy all sections to their location. The macro `IMAGE_FIRST_SECTION` returns a pointer the fist section header (`IMAGE_SECTION_HEADER`). All sections headers are following each other so `section++` jumps to the next section header. The `for` loop is just going through all the sections, getting `section->SizeOfRawData` and `memcopy` from `section->PointerToRawData` up to `section->SizeOfRawData` bytes into the allocated memory.
+The next step is to copy all sections to their location. The macro `IMAGE_FIRST_SECTION` returns a pointer to the fist section header (`IMAGE_SECTION_HEADER`). All section headers are following each other so `section++` jumps to the next section header. The `for` loop is just going through all the sections, getting `section->SizeOfRawData` then `memcopy` from `section->PointerToRawData` with a size of `section->SizeOfRawData` bytes into the allocated memory.
  
 ```c++
 // Get first section
@@ -277,16 +277,16 @@ mmemset(module, 0, sizeDllFile);
 pVirtualFree(module, 0, MEM_RELEASE)
 ```
 
-Relocations are parsed and applied. When ASLR is activated (as it should be!), the location where the PE is loaded is randomised. In our case, because we allocate the memory location ourselves with `VirtualAlloc`, it is the same as when the Windows loader load a PE file with ASLR activated, because we cannot control the location of the allocated buffer.
-Function calls need to be relocated in order for the code to run correctly. Everything hardcoded addresses should be increase (or decreased) by a `delta` value. This `delta` is equal to the "real" image base address minus the "expected" image base address (`NTheader->OptionalHeader.ImageBase`).
-Relocation is performed in block, the last block has a size of 0 to indicate the end off relocations data. Each block contains a `VirtualAddress`, representing the starting location of relocations for this block and a list of `offset` and `type`.
+Relocations are parsed and applied. When ASLR is activated (as it should be!), the location where the PE is loaded is randomised. In our case, because we allocate the memory location ourselves with `VirtualAlloc`, it is the same as when the Windows loader loads a PE file with ASLR activated, because we cannot control the location of the allocated buffer.
+Function calls need to be relocated in order for the code to run correctly. Every hardcoded addresses should be increase (or decreased) by a `delta` value. This `delta` is equal to the "real" image base address minus the "expected" image base address (`NTheader->OptionalHeader.ImageBase`).
+Relocation is performed in block, the last block has a size of 0 to indicate the end off relocation data. Each block contains a `VirtualAddress`, representing the starting location of relocations for this block and a list of `offset` and `type`.
 
-- `offset` is the location of the instruction to be patch from the block `VirtualAddress`.
+- `offset` is the location of the instruction to be patched from the block `VirtualAddress`.
 - `type` is the type of relocation
 
 ![Blocks](/assets/pics/2020-12-16/blocks.png)
 
-Relocation is the performed by adding `delta` to `VirtualAddress + offset`.
+Relocation is then performed by adding `delta` to `VirtualAddress + offset`.
 
 ```c++
 // Get relocation detla
