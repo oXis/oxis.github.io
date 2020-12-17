@@ -237,8 +237,8 @@ mmemcpy(imageBase, module, dosHeader->e_lfanew + NTheader->OptionalHeader.SizeOf
 NTheader = GetNTHeaders((HMODULE)imageBase);
 ```
 
-The next step is to copy all sections to their location.
-
+The next step is to copy all sections to their location. The macro `IMAGE_FIRST_SECTION` returns a pointer the fist section header (`IMAGE_SECTION_HEADER`). All sections headers are following each other so `section++` jumps to the next section header. The `for` loop is just going through all the sections, getting `section->SizeOfRawData` and `memcopy` from `section->PointerToRawData` up to `section->SizeOfRawData` bytes into the allocated memory.
+ 
 ```c++
 // Get first section
 PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(NTheader);
@@ -277,7 +277,16 @@ mmemset(module, 0, sizeDllFile);
 pVirtualFree(module, 0, MEM_RELEASE)
 ```
 
-Relocations are parsed and applied.
+Relocations are parsed and applied. When ASLR is activated (as it should be!), the location where the PE is loaded is randomised. In our case, because we allocate the memory location ourselves with `VirtualAlloc`, it is the same as when the Windows loader load a PE file with ASLR activated, because we cannot control the location of the allocated buffer.
+Function calls need to be relocated in order for the code to run correctly. Everything hardcoded addresses should be increase (or decreased) by a `delta` value. This `delta` is equal to the "real" image base address minus the "expected" image base address (`NTheader->OptionalHeader.ImageBase`).
+Relocation is performed in block, the last block has a size of 0 to indicate the end off relocations data. Each block contains a `VirtualAddress`, representing the starting location of relocations for this block and a list of `offset` and `type`.
+
+- `offset` is the location of the instruction to be patch from the block `VirtualAddress`.
+- `type` is the type of relocation
+
+![Blocks](/assets/pics/2020-12-16/blocks.png)
+
+Relocation is the performed by adding `delta` to `VirtualAddress + offset`.
 
 ```c++
 // Get relocation detla
@@ -321,7 +330,15 @@ if (delta != 0)
 }
 ```
 
-Imports are resolved using `LoadLibraryA` and the custom `GetExportAddress`.
+The import directory is located at `VirtualAddress` given by the `IMAGE_DATA_DIRECTORY` structure that correspond to `IMAGE_DIRECTORY_ENTRY_IMPORT` data directory.
+`IMAGE_IMPORT_DESCRIPTOR` struct contains the name of the imported DLL and the position of the Import Address Table (`FirstThunk`) and Import Lookup Table (`OriginalFirstThunk`). The ILT includes information of what function to load, either by ordinal or by name. What is confusing is that the Import Lookup Table (`OriginalFirstThunk`) and Import Address Table (`FirstThunk`) are identical on disk.
+
+From Microsoft.
+
+>**Import Address Table**  
+The structure and content of the import address table are identical to those of the import lookup table, until the file is bound. During binding, the entries in the import address table are overwritten with the 32-bit (for PE32) or 64-bit (for PE32+) addresses of the symbols that are being imported. These addresses are the actual memory addresses of the symbols, although technically they are still called "virtual addresses." The loader typically processes the binding.
+
+Imports are resolved using `LoadLibraryA` and the custom `GetExportAddress`. 
 
 > Side note: `LoadLibraryA` could be re-implemented but that implies writing a second custom PE loader.
 
@@ -537,6 +554,7 @@ I forgot most of the references I used to write the code, but the most important
 * https://web.archive.org/web/20150522211938/http://expdev.byethost7.com/2015/05/22/shellcode
 * https://github.com/fancycode/MemoryModule  
 * FIN7
+* Blocks reloc: https://stackoverflow.com/questions/17436668/how-are-pe-base-relocations-build-up
 
 # Thanks
 Stephen Fewer for the Reflective DLL loader technique. Markus F.X.J. Oberhumer for LZO and many others that posted code on Github. And of course, The Shadow Brokers and the National Security Agency
