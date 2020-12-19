@@ -1,25 +1,22 @@
-@media (prefers-color-scheme: light)
-  html
-    background: $light
-    color: $dark
-
-@media (prefers-color-scheme: dark)
-  html
-    background: $dark
-    color: $light
-
 html
   font-size: 16px
   font-size: $font-size
 
 body
-  font-family: "PT Sans", -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", "Roboto", sans-serif
+  background: $light
+  color: $dark
+  font-family: "PT Sans", -apple-system, "Helvetica Neue", "Segoe UI", "Roboto", sans-serif
   font-weight: $font-weight
   line-height: $line-height
   margin: 0
   -webkit-text-size-adjust: 100%
   -webkit-font-smoothing: antialiased
   -moz-osx-font-smoothing: grayscale
+
+@media (prefers-color-scheme: dark)
+  body
+    background: $dark
+    color: $light
 
 h1, h2, h3, h4, h5, h6
   font-weight: $heading-weight
@@ -33,7 +30,7 @@ a
   &:hover
     text-decoration: underline
 
-header a, footer a
+header a, footer a, aside a
   color: inherit
 
 header time
@@ -43,8 +40,8 @@ hr
   border: 1px solid reduce(30)
   margin: 2em 0
 
-article:not(:last-child)
-  border-bottom: 1px solid reduce(12)
+article:not(:last-of-type)
+  border-bottom: 1px solid reduce(20)
 
 blockquote
   background: reduce(6)

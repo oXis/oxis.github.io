@@ -3,6 +3,9 @@
 
 @import index, highlight
 
+.title
+  font-size: 1.4em
+
 .archive
   font-size: 1.1em
 
@@ -11,37 +14,18 @@
   min-width: 10ch
   margin: 0 .2em
 
-{% unless site.minimal %}
+{% if site.external %}
 
-.categories
-  color: $link-color
-  margin-bottom: .15em
-
-{% endunless %}
-
-{% unless site.navigation and site.external %}
-
-.title
-  font-size: 1.3em
-
-{% endunless %}
-
-{% if site.sidebar %}
-
-.hidden
-  display: none
-
-{% endif %}
-
-{% if site.sidebar or site.external %}
-
-.icons svg
+.icon
   height: 1em
   width: 1em
   fill: currentColor
   transition: .2s color
   vertical-align: middle
   margin-bottom: .15em
+
+a:hover .icon
+  color: reduce(100)
 
 {% endif %}
 
@@ -54,7 +38,7 @@
   border-radius: 2px
   border: 1.5px solid $link-color
   padding: .4em .8em
-  transition: .2s
+  transition: .2s background, .2s color
 
 .more a:hover
   color: #fff
@@ -62,45 +46,3 @@
   text-decoration: inherit
 
 {% endif %}
-
-{% if site.show_related %}
-
-.related div
-  flex: 1 0 15em
-
-.related span
-  display: block
-  color: reduce(100)
-
-.related a
-  font-size: 1.2em
-  font-weight: bold
-
-@media (min-width: 30em)
-  .next
-    text-align: right
-
-{% endif %}
-
-{% if site.show_title and site.navigation and site.external %}
-
-.title
-  font-size: 1.5em
-  width: 100%
-  margin: .1em 0 .6em
-
-{% endif %}
-
-{% unless site.sidebar %}
-
-.icons a:hover svg
-  color: reduce(100)
-
-@media (min-width: 70em)
-  .large
-    margin: 1em -20%
-  
-  .large img
-    width: 100%
-
-{% endunless %}
