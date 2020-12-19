@@ -8,7 +8,7 @@ This post is about my journey on writing my own implementation of the DOUBLEPULS
 
 # Intro
 
-This post comes long after the hype around The Shadow Brokers leaks has settled down, and quite some time after my personal implementation of the shellcode. The primary objective of this post is to describe how my implementation works.
+This post comes long after the hype around The Shadow Brokers leaks has settled down, and quite some time after my personal implementation of the shellcode. The primary objective of this post is to describe how my code works.
 
 After reading the f-secure [blog post](https://blog.f-secure.com/doublepulsar-usermode-analysis-generic-reflective-dll-loader/) about DoublePulsar usermode shellcode, I wanted to reproduce it purely in C++. I am no way near to be a C++ guru or l33t hacker but I thought that would be a good exercise.
 
@@ -88,7 +88,7 @@ The project is organised in 5 parts.
 - MyMessageBox  
     A small DLL that prints some text in a `MessageBox`
 - RunShellcode  
-    A small utility that injects the shellcode in itself or `notepad.exe`
+    A small utility that injects the shellcode in itself or into `notepad.exe`
 
 ## DoublePulsarShellcode
 
@@ -108,7 +108,7 @@ We will talk more about function order in the next section. Let's go back the to
 
 ### GetDLL()
 
-`GetDLL` will start by XOR decrypting itself until a `flag` is reached. `SHELLCODE_XOR_OFFSET` is where to start decrypting the shellcode, because the first bytes of the shellcode cannot be encrypted otherwise the shellcode could not run. You can see on the screenshot below that starting from the breakpoint (red), the code is garbage and cannot be interpreted.
+`GetDLL` will start by XOR decrypting itself until a `flag` is reached. `SHELLCODE_XOR_OFFSET` is where to start decrypting the shellcode, because the first bytes of the shellcode cannot be encrypted otherwise the shellcode could not run. You can see on the screenshot below that starting from the breakpoint (red), the code is garbage assembly.
 
 
 ![Obfuscated shellcode](/assets/pics/2020-12-16/x64dbg_obf.png)
@@ -118,7 +118,7 @@ We will talk more about function order in the next section. Let's go back the to
 #define SHELLCODE_XOR_OFFSET 70 // from start of the shellcode to SHELLCODE_XOR_OFFSET
 ```
 
-The XOR key is only 1 byte, so there is only 255 possible keys. This is not perfect and could be improved, but for now it is sufficient to prevent detection by AVs.
+The XOR key is only 1 byte, so there is only 255 possible keys. This is not perfect and could be improved, but for now it is sufficient to prevent detection by AVs by limiting signature size.
 
 The first 70 bytes are actually the `GetDLL` function prologue plus the snippet below.
 
@@ -132,7 +132,7 @@ while (*((byte*)start) != ('M' ^ KEY_DLL) || *((byte*)start+1) != ('Z' ^ KEY_DLL
 }
 ```
 
-When the `flag` is reached, in that case the flag is equal to `MZ` but it could be anything, the XOR routine exists (`while` loop) and some important data can be accessed.
+When the `flag` is reached, in that case the flag is equal to `MZ` but it could be anything, the XOR routine exits (`while` loop) and some important data can be accessed.
 
 - `sizeShellcode` is the total size of the shellcode
 - `ordToCall` represents the function to call if the payload is a DLL
@@ -142,7 +142,7 @@ When the `flag` is reached, in that case the flag is equal to `MZ` but it could 
 The shellcode then proceeds to XOR decrypt `compressedSizeDllFile` bytes and loads `VirtualAlloc` Windows API function.
 
 **GetModuleBaseAddress and GetExportAddress**  
-Windows API functions are resolved using two functions. `GetModuleBaseAddress` is used to resolve the base address of `kernel32` using a hash value (see `Helper.cpp`). The function reads the Process Environnement Bloc `PEB` and list loaded modules until `kernel32` is found.   
+Windows API functions are resolved using two functions. `GetModuleBaseAddress` is used to resolve the base address of `kernel32` using a hash value (see `Helper.cpp`). The function reads the Process Environnement Bloc `PEB` and lists all loaded modules until `kernel32` is found.   
 `GetExportAddress` acts like the "real" Windows API `GetProcAddress`, it resolves the address of the function inside the provided module that corresponds to the hash value given in argument. This implementation supports forwarded functions.
 
 `VirtualAlloc` is used to allocate `sizeDllFile` bytes. The allocated space will receive the decompressed payload. `lzo1z_decompress` is called to decompress the payload, after that, the memory region holding the compressed payload is zeroed out using `memset` (`mmemset` is just a custom *inline* implementation of `memset`).
@@ -211,7 +211,7 @@ int GetDLL()
 
 This function is the actual PE loader.
 
-The first step is to get the NT header from the payload and retrieve many Windows API functions. `VirtualAlloc` is used to allocate `NTheader->OptionalHeader.SizeOfImage` bytes. The NT header is then copied to this location and used instead of the previous one.
+The first step is to get the NT header from the payload and retrieve many Windows API functions. `VirtualAlloc` is used to allocate `NTheader->OptionalHeader.SizeOfImage` bytes. The NT header is then copied to this new location and used instead of the previous one.
 
 ```c++
 // Get headers
@@ -237,7 +237,7 @@ mmemcpy(imageBase, module, dosHeader->e_lfanew + NTheader->OptionalHeader.SizeOf
 NTheader = GetNTHeaders((HMODULE)imageBase);
 ```
 
-The next step is to copy all sections to their location. The macro `IMAGE_FIRST_SECTION` returns a pointer to the fist section header (`IMAGE_SECTION_HEADER`). All section headers are following each other so `section++` jumps to the next section header. The `for` loop is just going through all the sections, getting `section->SizeOfRawData` then `memcopy` from `section->PointerToRawData` with a size of `section->SizeOfRawData` bytes into the allocated memory.
+The next step is to copy all sections to their virtual addresses. The macro `IMAGE_FIRST_SECTION` returns a pointer to the fist section header (`IMAGE_SECTION_HEADER`). All section headers are following each other so `section++` jumps to the next section header. The `for` loop is just going through all the sections, getting `section->SizeOfRawData` then `memcopy` from `section->PointerToRawData` with a size of `section->SizeOfRawData` bytes into the allocated memory.
  
 ```c++
 // Get first section
