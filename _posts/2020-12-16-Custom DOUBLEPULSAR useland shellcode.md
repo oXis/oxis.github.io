@@ -1,6 +1,8 @@
 ---
 title:  "Custom DOUBLEPULSAR userland shellcode"
 layout: post
+author: [oXis]
+date: "2020-12-16"
 ---
 
 This post is about my journey on writing my own implementation of the DOUBLEPULSAR userland shellcode.
