@@ -254,4 +254,4 @@ func newEncodedPSScript(script string) (string, error) {
 }
 ```
 
-When calling the compiled Go binary, a new doc is generated and placed into the current directory. Windows Defender forbids executing powershell from a Word Macro, so Real-time protection should be disabled. This can be bypassed but I let found a way. This post is about making Word macros with Go, not weaponising those macros. 
+When calling the compiled Go binary, a new doc is generated and placed into the current directory. Windows Defender forbids executing powershell from a Word Macro, so real-time protection should be disabled. This can be bypassed but I let you find a way. This post is about making Word macros with Go, not weaponising those macros.
