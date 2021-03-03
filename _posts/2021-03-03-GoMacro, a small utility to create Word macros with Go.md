@@ -3,6 +3,9 @@ title:  "GoMacro: a small utility to create Word macros with Go"
 layout: post
 ---
 
+Small utility and lib to create Word Documents with malicious macros.
+
+
 I was browsing around on Github and found a really nice project by [@EmericNasi](https://twitter.com/emericnasi). It's called [macro_pack](https://github.com/sevagas/macro_pack). The project uses `win32com` python library to manage different Office documents and inject macro inside them.   
 Back when I found out about this project, I was learning Go while also reading **Black Hat Go** by Tom Steele, Chris Patten, and Dan Kottmann. So, naturally, I wanted to reproduce some capabilities of `macro_pack`, but in pure Go. Because... why not?   
 
