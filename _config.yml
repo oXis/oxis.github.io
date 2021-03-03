@@ -28,7 +28,7 @@ navigation:
 external:                    # see http://fontawesome.com/icons
   - {title: Mail, icon: envelope, url: "mailto:oxis44@protonmail.com"}
   - {title: Github, icon: github, url: "https://github.com/oXis"}
-  - {title: Twitter, icon: twitter, url: "https://twitter.com/BenPeacecraft"}
+  - {title: Twitter, icon: twitter, url: "https://twitter.com/meerkatsec"}
 #  - {title: Subscribe, icon: rss, url: "/feed.xml"}
 
 comments:
