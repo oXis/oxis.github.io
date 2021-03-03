@@ -234,6 +234,7 @@ func ReplaceAllInCode(code string, funcMap, paramMap, varMap, stringMap map[stri
 
 The main function is heavily commented and is rather easy to follow.
 
+Important note:   
 When calling `-EncodedCommand`, Powershell requires a `UTF16-LE` base64 encoded string. The function bellow, takes any Go string, encode the string to `UTF16`, add `NULL` bytes between each characters to confuse AVs, and finally `base64` encode the resulting string. The result is compatible with `-EncodedCommand` option.
 ```go
 // newEncodedPSScript returns a UTF16-LE, base64 encoded script.
@@ -254,4 +255,4 @@ func newEncodedPSScript(script string) (string, error) {
 }
 ```
 
-When calling the compiled Go binary, a new doc is generated and placed into the current directory. Windows Defender forbids executing powershell from a Word Macro, so real-time protection should be disabled. This can be bypassed but I let you find a way. This post is about making Word macros with Go, not weaponising those macros.
+After calling the compiled Go binary, a new doc is generated and placed into the current directory. Windows Defender forbids executing powershell from a Word Macro, so real-time protection should be disabled. This can be bypassed but I let you find a way. This post is about making Word macros with Go, not weaponising those macros.
