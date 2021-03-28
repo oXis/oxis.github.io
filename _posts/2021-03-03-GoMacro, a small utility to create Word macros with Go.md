@@ -9,7 +9,7 @@ A small utility and library written in Go to create Word Documents with maliciou
 When I was browsing Github, I found a really nice project by [@EmericNasi](https://twitter.com/emericnasi) called [macro_pack](https://github.com/sevagas/macro_pack). The project uses the `win32com` python library to manipulate Office documents and inject macros.   
 When I found out about this project, I was learning Go while also reading **Black Hat Go** by Tom Steele, Chris Patten, and Dan Kottmann. So, naturally, I wanted to reproduce some capabilities of `macro_pack`, but in pure Go. Because... why not?   
 
-The Python library `win32com`, uses a subset of **Component Object Model** (COM) called **Object Linking and Embedding** (OLE) to communicate with Office (Word, Excel, etc). I won't go into details because my understanding stops here, so in short, you need a client that talks OLE to be able to send commands to Office. This is exactly what [go-ole](https://github.com/go-ole/go-ole) does. Except, the library is very low level to be easily usable, so I started writing `gomacro`.
+The Python library `win32com`, uses a subset of **Component Object Model** (COM) called **Object Linking and Embedding** (OLE) to communicate with Office (Word, Excel, etc). I won't go into details because my understanding stops here, so in short, you need a client that talks OLE to be able to send commands to Office. This is exactly what [go-ole](https://github.com/go-ole/go-ole) does. Except, the library is a bit too low level to be easily usable, so I started writing `gomacro`.
 
 ## GoMacro
 
@@ -182,7 +182,7 @@ The gomacro library is not complete, but adding new functions should be very eas
 
 ## VB Obfuscation
 
-The obfuscation is handled by this function. What the function gets all `functions`, `function parameters`, `variables` and `strings` from a VB code. Then, a map is created for each item that links the original _plaintext_ name to the new random _obfuscated_ name.
+The obfuscation is handled by this function. The function gets all `functions`, `function parameters`, `variables` and `strings` from a VB code. Then, a map is created for each item that links the original _plaintext_ name to the new random _obfuscated_ name.
 
 ```go
 // ObfuscateVBCode ...
