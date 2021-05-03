@@ -49,9 +49,10 @@ This section will quickly explain how to setup step-ca. `step-cli` is a command 
 ### Specific to Arch Linux Arm
 <details>
   <summary>Click to expand!</summary>
+   
+  `Step-ca` is not present in the repos and the `PKGBUILD` doesn't have `armv7h` support. Please use this PKGBUILD to install step-cli.   
 
-  `Step-ca` is not present in the repos and the `PKGBUILD` doesn't have `armv7h` support. Please use this PKGBUILD to install step-cli.
-
+    
   ```sh
 # Maintainer: Max Furman <mx.furman@gmail.com>
 # Maintainer: Sebastian Tiedtke <sebastiantiedtke@gmail.com>
