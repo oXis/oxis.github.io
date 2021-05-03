@@ -47,13 +47,11 @@ This section will quickly explain how to setup step-ca. `step-cli` is a command 
 [Official installation](https://smallstep.com/docs/step-cli/installation)
 
 ### Specific to Arch Linux Arm
-<details>
-  <summary>Click to expand!</summary>
    
-  `Step-ca` is not present in the repos and the `PKGBUILD` doesn't have `armv7h` support. Please use this PKGBUILD to install step-cli.   
+`Step-ca` is not present in the repos and the `PKGBUILD` on AUR doesn't have `armv7h` support. Please use this PKGBUILD to install step-cli.   
 
     
-  ```sh
+```sh
 # Maintainer: Max Furman <mx.furman@gmail.com>
 # Maintainer: Sebastian Tiedtke <sebastiantiedtke@gmail.com>
 # Maintainer: Nazar Mishturak <nazarmx@gmail.com>
@@ -89,8 +87,6 @@ package() {
     install -Dm644 "zsh_autocomplete" "$pkgdir/usr/share/zsh/site-functions/_${_binname}"
 }
 ```
-
-</details>
 
 Official documentation for installing and bootstrapping step-ca can be found on their official website.
 [Docker installation](https://hub.docker.com/r/smallstep/step-ca)   
@@ -183,6 +179,12 @@ networks:
 volumes:
   certs:
     driver: local
+```
+
+Then, bring the container up.
+```sh
+alarm🦄custodes [~/workspace/traefik] 
+➜ docker-compose -f traefik.yaml up -d
 ```
 
 ## Nextcloud
@@ -287,6 +289,12 @@ volumes:
     driver: local
 ```
 
+Bring the container up.
+```sh
+alarm🦄custodes [~/workspace/nextcloud] 
+➜ docker-compose -f nextcloud.yaml up -d
+```
+
 ## Portainer
 ```yaml
 version: '3'
@@ -320,6 +328,12 @@ networks:
 volumes:
   portainer_data:
     external: true
+```
+
+Bring the container up.
+```sh
+alarm🦄custodes [~/workspace/portainer] 
+➜ docker-compose -f portainer.yaml up -d
 ```
 
 ## Adding a new service
