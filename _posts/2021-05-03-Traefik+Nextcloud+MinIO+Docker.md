@@ -110,9 +110,29 @@ step ca bootstrap --ca-url https://localhost:4343 --fingerprint $FINGERPRINT
 
 # add ACME provider
 docker exec -it step-ca step ca provisioner add traefik --type ACME
+```
 
+### Add Traefik domain name to step-ca
+You must add the domain name of your Traefik instance to step-ca configuration. 
+```yaml
+"dnsNames": [
+                "localhost",
+                "step-ca",
+                "raspberry"
+        ]
+```
+
+### Add CA to trust
+Arch Linux
+```sh
 # Add the certificate to trust store
 sudo trust anchor --store ./cert.crt
+```
+
+Ubuntu
+```sh
+sudo cp ./cert /usr/share/ca-certificates/
+sudo update-ca-certificates
 ```
 
 ## Traefik
@@ -167,8 +187,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Mount system ssl store inside the container. Because the system trusts our CA, traefik will also trust it. 
       - /etc/ssl/certs:/etc/ssl/certs
-      - /etc/ca-certificates:/etc/ca-certificates
       - /etc/ssl/acme.json:/etc/ssl/acme.json
+      - /etc/ca-certificates:/etc/ca-certificates
       # - ./traefik.toml:/traefik.toml
     networks:
       # Attach to external network 
