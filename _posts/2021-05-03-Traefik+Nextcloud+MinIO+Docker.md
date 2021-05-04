@@ -389,3 +389,7 @@ networks:
 
 ## Why bother with internal and external network?
 In this case, it is useless to have two networks, but if your server has multiple physical interfaces, you can publish ports to the internal interface. Alternatively, you can have a second traefik container (it can work with one instance but I think that two is better) that listens on the internal network and proxy requests to internal services.
+
+## Outro
+The blog post does not go into detail on how to configure step-ca properly. You should go to their website and follow the official guide.   
+If you have any request regarding this blog post, feel free to open an Issue on the blog post Github repo.
